@@ -10,7 +10,7 @@ import {
   sameDay, addDays, startOfDay, relativeTime, closenessOf,
   LOCATIONS,
   Badge, StatusDot, Btn, IconBtn, Card, Section, Modal, Field, inputCls,
-  Avatar, TypeChip, Toast,
+  Avatar, TypeChip, Toast, typeInfo,
 } from './components';
 
 const LOGO = '/logo.jpg';
@@ -103,7 +103,7 @@ function UserHome({ onOpen, onAdd, onAi }) {
           <Avatar src={me.avatar} name={me.name} size={44} ring />
           <div>
             <div className="text-xs text-stone leading-tight">{greet}</div>
-            <div className="text-[15px] font-bold text-ink serif leading-tight">الشيخ حامد بن عمر</div>
+            <div className="text-[15px] font-bold text-ink serif leading-tight">الحبيب حامد بن عمر</div>
           </div>
         </div>
         <button className="relative w-10 h-10 rounded-full bg-paper hairline flex items-center justify-center">
@@ -166,7 +166,7 @@ function UserHome({ onOpen, onAdd, onAi }) {
 }
 
 function NextApptHero({ appt, now, onOpen }) {
-  const t = APPT_TYPES[appt.type];
+  const t = typeInfo(appt.type);
   const st = TRIP_STATUS[appt.status];
   const isPast = new Date(appt.endISO) < now;
   const isNow = new Date(appt.startISO) <= now && new Date(appt.endISO) >= now;
@@ -231,7 +231,7 @@ function DayTimeline({ items, onOpen, now }) {
   return (
     <div className="relative rail pr-9">
       {items.map((a, idx) => {
-        const t = APPT_TYPES[a.type];
+        const t = typeInfo(a.type);
         const st = TRIP_STATUS[a.status];
         const isPast = new Date(a.endISO) < now;
         const flashed = flashId===a.id;
@@ -331,8 +331,8 @@ function WeekView({ appts, start, onOpen }) {
                 {its.map(a => (
                   <button key={a.id} onClick={()=>onOpen(a.id)}
                     className="w-full text-right bg-paper hairline rounded-chip p-2.5 flex items-center gap-2.5">
-                    <div className="w-1 h-8 rounded-full" style={{background:`var(--tw-${APPT_TYPES[a.type].tone})`}}></div>
-                    <span className={`w-1.5 h-1.5 rounded-full ${toneDot(APPT_TYPES[a.type].tone)}`}/>
+                    <div className="w-1 h-8 rounded-full" style={{background:`var(--tw-${typeInfo(a.type).tone})`}}></div>
+                    <span className={`w-1.5 h-1.5 rounded-full ${toneDot(typeInfo(a.type).tone)}`}/>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-ink truncate">{a.title}</div>
                       <div className="text-[11px] text-stone truncate">{a.location.split(' — ')[0]}</div>
@@ -372,7 +372,7 @@ function MonthView({ appts, anchor, onOpen, setAnchor, setMode }) {
               <span className={`text-xs font-bold num ${isToday?'':''}`}>{d.getDate()}</span>
               <div className="flex gap-0.5">
                 {its.slice(0,3).map((a,j)=>(
-                  <span key={j} className={`w-1 h-1 rounded-full ${toneDot(APPT_TYPES[a.type].tone)}`}/>
+                  <span key={j} className={`w-1 h-1 rounded-full ${toneDot(typeInfo(a.type).tone)}`}/>
                 ))}
               </div>
             </button>
@@ -526,13 +526,48 @@ function NotifRow({ n }) {
 }
 
 /* ---------- ADD APPOINTMENT MODAL ---------- */
+function LocationAutocomplete({ value, onChange, placeholder }) {
+  const [open, setOpen] = React.useState(false);
+  const suggestions = React.useMemo(() => {
+    const q = (value || '').trim().toLowerCase();
+    if (!q) return LOCATIONS;
+    return LOCATIONS.filter(l => l.toLowerCase().includes(q));
+  }, [value]);
+  return (
+    <div className="relative">
+      <input
+        className={inputCls}
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+        placeholder={placeholder}
+        autoComplete="off"
+      />
+      {open && suggestions.length > 0 && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-paper hairline rounded-chip shadow-pop max-h-60 overflow-y-auto">
+          {suggestions.slice(0, 8).map(loc => (
+            <button
+              key={loc} type="button"
+              onMouseDown={e => { e.preventDefault(); onChange(loc); setOpen(false); }}
+              className="w-full text-right px-3 py-2 text-sm hover:bg-parchment flex items-center gap-2 transition-colors">
+              <I.Pin size={13} className="text-stone2 shrink-0"/>
+              <span className="text-ink">{loc}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AddAppointmentModal({ onClose, initialType='meeting' }) {
-  const { createAppointment, drivers } = useApp();
+  const { createAppointment, drivers, push } = useApp();
   const [form, setForm] = React.useState(() => {
     const start = new Date(); start.setMinutes(0,0,0); start.setHours(start.getHours()+1);
     const end = new Date(start); end.setHours(end.getHours()+1);
     return {
-      title:'', type:initialType, priority:initialType==='urgent'?'urgent':'normal',
+      title:'', type:initialType, customType:'', priority:initialType==='urgent'?'urgent':'normal',
       date: `${start.getFullYear()}-${pad(start.getMonth()+1)}-${pad(start.getDate())}`,
       startTime:`${pad(start.getHours())}:${pad(start.getMinutes())}`,
       endTime:`${pad(end.getHours())}:${pad(end.getMinutes())}`,
@@ -543,13 +578,17 @@ function AddAppointmentModal({ onClose, initialType='meeting' }) {
 
   const submit = (e) => {
     e.preventDefault();
-    if (!form.title || !form.location) return;
+    if (!form.title.trim()) { push('العنوان مطلوب', 'clay'); return; }
+    if (!form.location.trim()) { push('الموقع مطلوب', 'clay'); return; }
+    if (form.type === 'custom' && !form.customType.trim()) { push('اكتب اسم النوع المخصص', 'clay'); return; }
     const start = new Date(`${form.date}T${form.startTime}:00`);
     const end   = new Date(`${form.date}T${form.endTime}:00`);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) { push('تاريخ أو وقت غير صحيح', 'clay'); return; }
+    const finalType = form.type === 'custom' ? form.customType.trim() : form.type;
     createAppointment({
-      title:form.title, type:form.type, priority:form.priority,
-      start:start.toISOString(), end:end.toISOString(),
-      location:form.location, notes:form.notes,
+      title:form.title.trim(), type:finalType, priority:form.priority,
+      startISO:start.toISOString(), endISO:end.toISOString(),
+      location:form.location.trim(), notes:form.notes,
       needsDriver:form.needsDriver, driverId: form.needsDriver && !form.broadcast ? form.driverId : null,
     });
     onClose();
@@ -559,7 +598,7 @@ function AddAppointmentModal({ onClose, initialType='meeting' }) {
     <Modal open onClose={onClose} title={initialType==='urgent'?'موعد طارئ':'إضافة موعد'} size="md">
       <form onSubmit={submit} className="space-y-4">
         <Field label="العنوان">
-          <input className={inputCls} value={form.title} onChange={e=>set('title', e.target.value)} placeholder="مثلاً: درس التفسير الأسبوعي" required/>
+          <input className={inputCls} value={form.title} onChange={e=>set('title', e.target.value)} placeholder="مثلاً: درس التفسير الأسبوعي"/>
         </Field>
 
         <Field label="نوع الموعد">
@@ -570,18 +609,24 @@ function AddAppointmentModal({ onClose, initialType='meeting' }) {
                 <t.icon size={16}/> {t.label}
               </button>
             ))}
+            <button type="button" onClick={()=>set('type','custom')}
+              className={`p-2.5 rounded-chip flex flex-col items-center gap-1 text-xs font-medium transition-colors ${form.type==='custom' ? 'bg-brass/15 text-brass ring-2 ring-brass' : 'bg-parchment hairline text-stone'}`}>
+              <I.Edit size={16}/> أخرى
+            </button>
           </div>
+          {form.type === 'custom' && (
+            <input className={`${inputCls} mt-2`} value={form.customType} onChange={e=>set('customType', e.target.value)} placeholder="اكتب اسم النوع (مثال: مقابلة إعلامية)"/>
+          )}
         </Field>
 
         <div className="grid grid-cols-3 gap-3">
-          <Field label="التاريخ"><input type="date" className={inputCls} value={form.date} onChange={e=>set('date',e.target.value)} required/></Field>
-          <Field label="البداية"><input type="time" className={inputCls} value={form.startTime} onChange={e=>set('startTime',e.target.value)} required/></Field>
-          <Field label="النهاية"><input type="time" className={inputCls} value={form.endTime}   onChange={e=>set('endTime',e.target.value)} required/></Field>
+          <Field label="التاريخ"><input type="date" className={inputCls} value={form.date} onChange={e=>set('date',e.target.value)}/></Field>
+          <Field label="البداية"><input type="time" className={inputCls} value={form.startTime} onChange={e=>set('startTime',e.target.value)}/></Field>
+          <Field label="النهاية"><input type="time" className={inputCls} value={form.endTime}   onChange={e=>set('endTime',e.target.value)}/></Field>
         </div>
 
-        <Field label="الموقع">
-          <input list="locations" className={inputCls} value={form.location} onChange={e=>set('location',e.target.value)} placeholder="مثلاً: دار المصطفى — تريم" required/>
-          <datalist id="locations">{LOCATIONS.map(l=><option key={l} value={l}/>)}</datalist>
+        <Field label="الموقع" hint="اكتب أي موقع، والاقتراحات تظهر تلقائياً">
+          <LocationAutocomplete value={form.location} onChange={v=>set('location',v)} placeholder="مثلاً: دار المصطفى — تريم"/>
         </Field>
 
         <Field label="الأولوية">
@@ -641,7 +686,7 @@ function AppointmentDetail({ id, onClose }) {
   const appt = appts.find(a => a.id === id);
   const [assign, setAssign] = React.useState(false);
   if (!appt) { onClose(); return null; }
-  const t = APPT_TYPES[appt.type];
+  const t = typeInfo(appt.type);
   const st = TRIP_STATUS[appt.status];
   const apptLog = log.filter(l => l.appointmentId === appt.id).slice(0, 8);
 
@@ -1012,7 +1057,7 @@ function DriverTaskHero({ appt, now, onStatus }) {
           <div className="mt-3 text-base font-bold leading-tight">{appt.title}</div>
           <div className="mt-2 space-y-1.5">
             <div className="text-[13px] text-parchment/85 flex items-center gap-1.5"><I.Pin size={13}/> {appt.location}</div>
-            <div className="text-[13px] text-parchment/85 flex items-center gap-1.5"><I.User size={13}/> الشيخ حامد بن عمر</div>
+            <div className="text-[13px] text-parchment/85 flex items-center gap-1.5"><I.User size={13}/> الحبيب حامد بن عمر</div>
             {appt.notes && <div className="text-[12px] text-parchment/70 flex items-start gap-1.5 mt-2"><I.List size={12} className="mt-0.5"/> {appt.notes}</div>}
           </div>
           {actionButtons()}
@@ -1151,6 +1196,7 @@ function DeclineModal({ onClose, onConfirm }) {
 function AdminApp() {
   const [nav, setNav] = React.useState('overview');
   const [detailId, setDetailId] = React.useState(null);
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const items = [
     { key:'overview',    label:'نظرة عامة',    Icon:I.Grid },
     { key:'dispatch',    label:'لوحة التوزيع', Icon:I.Layers },
@@ -1161,11 +1207,27 @@ function AdminApp() {
     { key:'reports',     label:'التقارير',     Icon:I.Report },
     { key:'settings',    label:'الإعدادات',    Icon:I.Settings },
   ];
+  const currentItem = items.find(i => i.key === nav) || items[0];
+
   return (
-    <div className="w-full min-h-[800px] bg-parchment flex flex-col rounded-hero hairline overflow-hidden shadow-pop" style={{maxWidth:'1400px'}}>
+    <div className="w-full bg-parchment flex flex-col rounded-hero hairline overflow-hidden shadow-pop" style={{maxWidth:'1400px', minHeight:'600px'}}>
       <AdminTopbar/>
+
+      {/* Mobile: horizontal scrollable tabs */}
+      <div className="lg:hidden hairline-b bg-paper overflow-x-auto">
+        <div className="flex gap-1 p-2 min-w-max">
+          {items.map(it => (
+            <button key={it.key} onClick={()=>setNav(it.key)}
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-chip transition-colors ${nav===it.key?'bg-ink text-parchment':'text-stone hover:bg-line2'}`}>
+              <it.Icon size={14} stroke={nav===it.key?2:1.7}/> {it.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex-1 flex">
-        <aside className="w-56 shrink-0 bg-paper hairline-l flex flex-col py-3">
+        {/* Desktop sidebar — hidden on mobile */}
+        <aside className="hidden lg:flex w-56 shrink-0 bg-paper hairline-l flex-col py-3">
           <nav className="flex-1">
             {items.map(it => (
               <button key={it.key} onClick={()=>setNav(it.key)}
@@ -1182,7 +1244,13 @@ function AdminApp() {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto p-6" style={{background:'#F5EFDF'}}>
+        <main className="flex-1 overflow-y-auto p-3 lg:p-6 min-w-0" style={{background:'#F5EFDF'}}>
+          {/* Mobile page title */}
+          <div className="lg:hidden mb-3 flex items-center gap-2">
+            <currentItem.Icon size={18} stroke={2} className="text-brass"/>
+            <h2 className="text-base font-bold text-ink">{currentItem.label}</h2>
+          </div>
+
           {nav==='overview' && <AdminOverview onOpen={setDetailId}/>}
           {nav==='dispatch' && <AdminDispatch onOpen={setDetailId}/>}
           {nav==='appts'    && <AdminAppointments onOpen={setDetailId}/>}
@@ -1246,7 +1314,7 @@ function AdminOverview({ onOpen }) {
         <div className="text-sm text-stone mt-1">{fmtDate(now)}</div>
       </div>
 
-      <div className="grid grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <BigStat label="مواعيد اليوم"    n={todaysA.length}         tone="ink"/>
         <BigStat label="مشاوير قادمة"   n={upcomingTrips.length}    tone="brass"/>
         <BigStat label="سائقون فعّالون" n={activeD}                  tone="sage"/>
@@ -1255,7 +1323,7 @@ function AdminOverview({ onOpen }) {
         <BigStat label="تعارضات"        n={conflicts.length}         tone="clay"    highlight={conflicts.length>0}/>
       </div>
 
-      <div className="grid grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="col-span-2 space-y-4">
           <Card pad={false}>
             <div className="px-5 py-4 hairline-b flex items-center justify-between">
@@ -1361,7 +1429,7 @@ function LiveDriverRow({ driver }) {
 
 function AdminApptRow({ appt, onOpen }) {
   const { driverName, flashId } = useApp();
-  const t = APPT_TYPES[appt.type];
+  const t = typeInfo(appt.type);
   const st = TRIP_STATUS[appt.status];
   const flashed = flashId===appt.id;
   return (
@@ -1411,7 +1479,7 @@ function AdminDispatch({ onOpen }) {
         <Btn variant="ghost"><I.Refresh size={15}/> تحديث</Btn>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Unassigned column */}
         <div>
           <div className="mb-3 flex items-center justify-between">
@@ -1471,7 +1539,7 @@ function AdminDispatch({ onOpen }) {
 function DispatchCard({ appt, onOpen, showAssign=false, drivers=[], onAssign }) {
   const { flashId, driverName } = useApp();
   const st = TRIP_STATUS[appt.status];
-  const t = APPT_TYPES[appt.type];
+  const t = typeInfo(appt.type);
   const flashed = flashId===appt.id;
   return (
     <div className={`bg-paper rounded-chip p-3 hairline transition-all ${flashed?'ring-2 ring-brass':''}`}>
@@ -1571,7 +1639,7 @@ function AdminDrivers() {
         <h1 className="text-2xl font-bold text-ink serif">إدارة السائقين</h1>
         <Btn><I.Plus size={15}/> إضافة سائق</Btn>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {drivers.map(d => {
           const ds = DRIVER_STATUS[d.status];
           const dTrips = appts.filter(a => a.driverId === d.id);
@@ -1743,14 +1811,14 @@ function AdminReports() {
     <div className="space-y-5">
       <h1 className="text-2xl font-bold text-ink serif">التقارير</h1>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <BigStat label="إجمالي المواعيد"    n={totalA} tone="ink"/>
         <BigStat label="مواعيد مكتملة"     n={compA}  tone="sage"/>
         <BigStat label="ملغاة/مرفوضة"      n={cancA}  tone="clay"/>
         <BigStat label="مواعيد عاجلة"      n={urg}    tone="brass"/>
       </div>
 
-      <div className="grid grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Card>
           <h3 className="text-sm font-bold text-ink mb-4">المواعيد حسب النوع</h3>
           <div className="space-y-3">
@@ -1800,7 +1868,7 @@ function AdminReports() {
 
       <Card>
         <h3 className="text-sm font-bold text-ink mb-4">توزيع الأولوية</h3>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {Object.values(PRIORITIES).map(p => {
             const n = appts.filter(a=>a.priority===p.key).length;
             return (
@@ -1890,7 +1958,7 @@ function ConnectionStatus() {
 function RoleSwitcher() {
   const { role, setRole } = useApp();
   const roles = [
-    { key:'owner',  label:'المستخدم الرئيسي', sub:'الشيخ / المساعد', Icon:I.User },
+    { key:'owner',  label:'المستخدم الرئيسي', sub:'الحبيب / المساعد', Icon:I.User },
     { key:'driver', label:'تطبيق السائق',     sub:'أحمد أو محمد',    Icon:I.Car },
     { key:'admin',  label:'لوحة الإدارة',    sub:'Desktop dashboard', Icon:I.Grid },
   ];

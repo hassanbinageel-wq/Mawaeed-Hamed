@@ -244,8 +244,13 @@ function Avatar({ src, name, size=36, ring=false }) {
 }
 
 /* Type chip with icon */
+function typeInfo(type) {
+  if (APPT_TYPES[type]) return APPT_TYPES[type];
+  // Custom user-defined type: use the string as label, brass tone, generic icon
+  return { key: type, label: type, tone: 'brass', icon: I.Edit };
+}
 function TypeChip({ type }) {
-  const t = APPT_TYPES[type] || APPT_TYPES.meeting;
+  const t = typeInfo(type);
   const Ico = t.icon;
   return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-chip ${toneBg(t.tone)} ${toneFg(t.tone)}`}>
@@ -278,5 +283,5 @@ export {
   sameDay, addDays, startOfDay, relativeTime, closenessOf,
   LOCATIONS,
   Badge, StatusDot, Btn, IconBtn, Card, Section, Modal, Field, inputCls,
-  Avatar, TypeChip, Toast,
+  Avatar, TypeChip, Toast, typeInfo,
 };

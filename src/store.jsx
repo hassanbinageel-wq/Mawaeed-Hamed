@@ -210,12 +210,20 @@ export function AppProvider({ children }) {
   };
 
   const createAppointment = async (partial) => {
+    // Accept both naming conventions (start/end and startISO/endISO)
+    const startISO = partial.startISO || partial.start;
+    const endISO   = partial.endISO   || partial.end || startISO;
+    if (!startISO) {
+      push('فشل الحفظ: وقت البداية مطلوب', 'clay');
+      console.error('createAppointment: missing startISO', partial);
+      return;
+    }
     const a = {
       id: rid('a'),
       title: partial.title || 'موعد جديد',
       type: partial.type || 'meeting',
-      startISO: partial.startISO,
-      endISO: partial.endISO || partial.startISO,
+      startISO,
+      endISO,
       location: partial.location || '',
       notes: partial.notes || '',
       priority: partial.priority || 'normal',
@@ -226,7 +234,11 @@ export function AppProvider({ children }) {
       createdBy: partial.createdBy || 'u_abdullah',
     };
     const { error } = await supabase.from('appointments').insert(apptToRow(a));
-    if (error) { push('فشل الحفظ: ' + error.message, 'clay'); return; }
+    if (error) {
+      console.error('createAppointment failed:', error, 'payload:', apptToRow(a));
+      push('فشل الحفظ: ' + (error.message || error.details || 'خطأ غير معروف'), 'clay');
+      return;
+    }
     push('تم إنشاء الموعد', 'sage');
     await addLog('appointment.created', a.id, a.createdBy);
     if (a.driverId) {
