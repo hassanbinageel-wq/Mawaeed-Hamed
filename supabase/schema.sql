@@ -41,7 +41,9 @@ create table drivers (
 create table appointments (
   id text primary key,
   title text not null,
-  type text not null default 'meeting' check (type in ('lesson','meeting','visit','travel','personal','urgent')),
+  type text not null default 'meeting',
+  -- Note: no CHECK constraint on type — allows custom user-defined types
+  -- Known types: lesson, meeting, visit, travel, personal, urgent — anything else is custom
   start_iso timestamptz not null,
   end_iso timestamptz not null,
   location text,
@@ -136,7 +138,7 @@ create trigger appointments_touch before update on appointments for each row exe
 -- SEED DATA
 -- ============================================================================
 insert into users (id, name, role, phone, avatar) values
-  ('u_hamed',    'الشيخ حامد بن عمر', 'owner',     '+967 771 000 001', '/logo.jpg'),
+  ('u_hamed',    'الحبيب حامد بن عمر', 'owner',     '+967 771 000 001', '/logo.jpg'),
   ('u_abdullah', 'عبدالله المعلم',     'assistant', '+967 771 000 002', null),
   ('u_admin',    'إدارة المكتب',       'admin',     '+967 771 000 003', null);
 
